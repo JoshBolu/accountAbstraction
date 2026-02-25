@@ -16,10 +16,12 @@ contract SendPackedUserOp is Script {
     function run() public {
         address transferTo = 0x02e2EEDF19a3d98D4677c84Ac5BD1BdFF51b7007;
         HelperConfig helperConfig = new HelperConfig();
-        address dest = helperConfig.getConfig().account; // Arbitrum mainnet USDC address
+        address dest = helperConfig.getConfig().usdc; // Arbitrum mainnet USDC address
         uint256 value = 0;
+        // we get this after we have deployed the minimal account contract
         address minimalAccountAddress = 0x6bF86f3717c0D04D6AC3B3c01f20167179706a3b;
-        bytes memory functionData = abi.encodeWithSelector(IERC20.transfer.selector, transferTo, 1e15);
+        // we are transferring .003 USDC which is 3e6 because USDC has 6 decimals
+        bytes memory functionData = abi.encodeWithSelector(IERC20.transfer.selector, transferTo, 3e3);
         bytes memory executeCallData =
             abi.encodeWithSelector(MinimalAccount.execute.selector, dest, value, functionData);
         PackedUserOperation memory userOp =
@@ -27,7 +29,7 @@ contract SendPackedUserOp is Script {
         PackedUserOperation[] memory ops = new PackedUserOperation[](1);
         ops[0] = userOp;
         vm.startBroadcast();
-        IEntryPoint(helperConfig.getConfig().entryPoint).handleOps(ops, payable(dest));
+        IEntryPoint(helperConfig.getConfig().entryPoint).handleOps(ops, payable(helperConfig.getConfig().account));
         vm.stopBroadcast();
     }
 
@@ -40,7 +42,9 @@ contract SendPackedUserOp is Script {
         uint256 nonce = IEntryPoint(config.entryPoint).getNonce(minimalAccount, 0);
         PackedUserOperation memory userOp = _generateUnsignedUserOperation(callData, minimalAccount, nonce);
         // 2. Get user operation
+        // the userOpHash is what the entryPoint will use to verify the signature and also to prevent replay attacks by making sure the nonce is correct
         bytes32 userOpHash = IEntryPoint(config.entryPoint).getUserOpHash(userOp);
+        // we need to sign the userOpHash in EIP-191 format which is what the toEthSignedMessageHash does
         bytes32 digest = userOpHash.toEthSignedMessageHash();
         uint8 v;
         bytes32 r;

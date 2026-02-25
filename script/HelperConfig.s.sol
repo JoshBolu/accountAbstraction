@@ -28,8 +28,8 @@ contract HelperConfig is Script {
     uint256 constant ZKSYNC_SEPOLIA_CHAIN_ID = 300;
     uint256 constant LOCAL_CHAIN_ID = 31337;
     // Update the BURNER_WALLET to your burner wallet!
-    address constant BURNER_WALLET = 0xE4267c260090f0Cd85Aae5DCf1bf581f81df81C6;
-    uint256 constant ARBITRUM_MAINNET_CHAIN_ID = 42_161;
+    address constant BURNER_WALLET = 0x42BB5957F541e150329cF8ff7A52002f746419C4;
+    uint256 constant ARBITRUM_MAINNET_CHAIN_ID = 42161;
     uint256 constant ZKSYNC_MAINNET_CHAIN_ID = 324;
     // address constant FOUNDRY_DEFAULT_WALLET = 0x1804c8AB1F12E6bbf3894d4083f33e07309d1f38;
     address constant ANVIL_DEFAULT_ACCOUNT = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266;

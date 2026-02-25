@@ -7,11 +7,29 @@ import {PackedUserOperation} from "lib/account-abstraction/contracts/interfaces/
 import {IEntryPoint} from "lib/account-abstraction/contracts/interfaces/IEntryPoint.sol";
 import {HelperConfig} from "script/HelperConfig.s.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {MinimalAccount} from "src/ethereum/MinimalAccount.sol";
 
 contract SendPackedUserOp is Script {
     using MessageHashUtils for bytes32;
 
-    function run() public {}
+    function run() public {
+        address transferTo = 0x02e2EEDF19a3d98D4677c84Ac5BD1BdFF51b7007;
+        HelperConfig helperConfig = new HelperConfig();
+        address dest = helperConfig.getConfig().account; // Arbitrum mainnet USDC address
+        uint256 value = 0;
+        address minimalAccountAddress = 0x6bF86f3717c0D04D6AC3B3c01f20167179706a3b;
+        bytes memory functionData = abi.encodeWithSelector(IERC20.transfer.selector, transferTo, 1e15);
+        bytes memory executeCallData =
+            abi.encodeWithSelector(MinimalAccount.execute.selector, dest, value, functionData);
+        PackedUserOperation memory userOp =
+            generateSignedUserOperation(executeCallData, helperConfig.getConfig(), minimalAccountAddress);
+        PackedUserOperation[] memory ops = new PackedUserOperation[](1);
+        ops[0] = userOp;
+        vm.startBroadcast();
+        IEntryPoint(helperConfig.getConfig().entryPoint).handleOps(ops, payable(dest));
+        vm.stopBroadcast();
+    }
 
     function generateSignedUserOperation(
         bytes memory callData,
@@ -19,7 +37,7 @@ contract SendPackedUserOp is Script {
         address minimalAccount
     ) public view returns (PackedUserOperation memory) {
         // 1. Generate unsigned user operation
-        uint256 nonce = vm.getNonce(minimalAccount) - 1;
+        uint256 nonce = IEntryPoint(config.entryPoint).getNonce(minimalAccount, 0);
         PackedUserOperation memory userOp = _generateUnsignedUserOperation(callData, minimalAccount, nonce);
         // 2. Get user operation
         bytes32 userOpHash = IEntryPoint(config.entryPoint).getUserOpHash(userOp);

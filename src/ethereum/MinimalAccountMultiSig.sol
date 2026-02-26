@@ -7,6 +7,7 @@ import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/Messa
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {SIG_VALIDATION_FAILED, SIG_VALIDATION_SUCCESS} from "lib/account-abstraction/contracts/core/Helpers.sol";
 import {IEntryPoint} from "lib/account-abstraction/contracts/interfaces/IEntryPoint.sol";
+import {console} from "forge-std/console.sol";
 
 // Minimal multisig AA account. Signatures are 65-byte concatenated (r,s,v) for each owner.
 contract MinimalAccountMultiSig is IAccount {
@@ -80,6 +81,7 @@ contract MinimalAccountMultiSig is IAccount {
     {
         bytes32 ethSignedMessageHash = MessageHashUtils.toEthSignedMessageHash(userOpHash);
         uint256 sigCount = userOp.signature.length / 65;
+        console.log("sig count: ", sigCount);
         if (sigCount < THRESHOLD || userOp.signature.length % 65 != 0) {
             return SIG_VALIDATION_FAILED;
         }

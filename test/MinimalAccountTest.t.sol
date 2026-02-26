@@ -122,10 +122,6 @@ contract MinimalAccountTest is Test {
         PackedUserOperation[] memory ops = new PackedUserOperation[](1);
         ops[0] = packedUserOp;
 
-        console.log("transaction origin:", tx.origin);
-        console.log("msg.sender:", msg.sender);
-        console.log("msg.sender code length:", msg.sender.code.length);
-
         // Act
         vm.startPrank(randomUser, randomUser);
         IEntryPoint(helperConfig.getConfig().entryPoint).handleOps(ops, payable(randomUser));

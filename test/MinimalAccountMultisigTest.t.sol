@@ -14,6 +14,8 @@ import {IEntryPoint} from "lib/account-abstraction/contracts/interfaces/IEntryPo
 contract MinimalAccountMultiSigTest is Test {
     using MessageHashUtils for bytes32;
 
+    uint256 constant AMOUNT = 1e18;
+    address randomUser = makeAddr("randomUser");
     HelperConfigMultisig helperConfig;
     MinimalAccountMultiSig minimalAccountMultisig;
     ERC20Mock usdc;
@@ -33,5 +35,55 @@ contract MinimalAccountMultiSigTest is Test {
             assertEq(owners[i], helperConfig.getConfig().accounts[i]);
         }
         assertEq(owners.length, 5);
+    }
+
+    function testValidationOfUserOps() public {
+        // Arrange
+        assertEq(usdc.balanceOf(address(minimalAccountMultisig)), 0);
+        address dest = address(usdc);
+        uint256 value = 0;
+        bytes memory functionData =
+            abi.encodeWithSelector(ERC20Mock.mint.selector, address(minimalAccountMultisig), AMOUNT);
+        bytes memory executeCallData =
+            abi.encodeWithSelector(MinimalAccountMultiSig.execute.selector, dest, value, functionData);
+        PackedUserOperation memory packedUserOp = sendPackedUserOpMultiSig.generateSignedOperation(
+            executeCallData, helperConfig.getConfig(), address(minimalAccountMultisig)
+        );
+        bytes32 userOpHash = IEntryPoint(helperConfig.getConfig().entryPoint).getUserOpHash(packedUserOp);
+        uint256 missingAccountFunds = 1e18;
+
+        // Act
+        vm.startPrank(helperConfig.getConfig().entryPoint);
+        uint256 validationData = minimalAccountMultisig.validateUserOp(packedUserOp, userOpHash, missingAccountFunds);
+
+        // Assert
+        assertEq(validationData, 0);
+    }
+
+    function testEntryPointCanExecuteCommand() public {
+        // Arrange
+        assertEq(usdc.balanceOf(address(minimalAccountMultisig)), 0);
+        address dest = address(usdc);
+        uint256 value = 0;
+        bytes memory functionData =
+            abi.encodeWithSelector(ERC20Mock.mint.selector, address(minimalAccountMultisig), AMOUNT);
+        bytes memory executeCallData =
+            abi.encodeWithSelector(MinimalAccountMultiSig.execute.selector, dest, value, functionData);
+        PackedUserOperation memory packedUserOp = sendPackedUserOpMultiSig.generateSignedOperation(
+            executeCallData, helperConfig.getConfig(), address(minimalAccountMultisig)
+        );
+
+        vm.deal(address(minimalAccountMultisig), AMOUNT);
+
+        PackedUserOperation[] memory ops = new PackedUserOperation[](1);
+        ops[0] = packedUserOp;
+
+        // Act
+        vm.startPrank(randomUser, randomUser);
+        IEntryPoint(helperConfig.getConfig().entryPoint).handleOps(ops, payable(randomUser));
+        vm.stopPrank();
+
+        // Assert
+        assertEq(usdc.balanceOf(address(minimalAccountMultisig)), AMOUNT);
     }
 }

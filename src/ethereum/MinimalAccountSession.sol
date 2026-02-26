@@ -3,43 +3,33 @@ pragma solidity ^0.8.31;
 
 import {IAccount} from "lib/account-abstraction/contracts/interfaces/IAccount.sol";
 import {PackedUserOperation} from "lib/account-abstraction/contracts/interfaces/PackedUserOperation.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import {SIG_VALIDATION_FAILED, SIG_VALIDATION_SUCCESS} from "lib/account-abstraction/contracts/core/Helpers.sol";
+import {SIG_VALIDATION_FAILED, SIG_VALIDATION_SUCCESS, _packValidationData} from "lib/account-abstraction/contracts/core/Helpers.sol";
 import {IEntryPoint} from "lib/account-abstraction/contracts/interfaces/IEntryPoint.sol";
 
-// Minimal multisig AA account. Signatures are 65-byte concatenated (r,s,v) for each owner.
-contract MinimalAccountMultiSig is IAccount {
+// Minimal AA account with session key + expiry.
+contract MinimalAccountSession is IAccount, Ownable {
     /*/////////////////////////////////////////////////////////
                             ERRORS
     /////////////////////////////////////////////////////////*/
-    error MinimalAccountMultiSig__NotFromEntryPoint();
-    error MinimalAccountMultiSig__CallFailed(bytes);
-    error MinimalAccountMultiSig__InvalidOwners();
-    error MinimalAccountMultiSig__InvalidThreshold();
-    error MinimalAccountMultiSig__InvalidSignatures();
+    error MinimalAccountSession__NotFromEntryPoint();
+    error MinimalAccountSession__NotFromEntryPointOrOwner();
+    error MinimalAccountSession__CallFailed(bytes);
+    error MinimalAccountSession__InvalidSessionKey();
 
     /*/////////////////////////////////////////////////////////
                         STATE VARIABLES
     /////////////////////////////////////////////////////////*/
     IEntryPoint private immutable I_ENTRY_POINT;
-    uint256 public immutable THRESHOLD;
-    mapping(address => bool) public isOwner;
-    address[] public owners;
+    address public sessionKey;
+    uint48 public sessionValidUntil;
+    string public sessionProvider;
 
-    constructor(address entryPoint, address[] memory _owners, uint256 _threshold) {
-        if (_owners.length == 0) revert MinimalAccountMultiSig__InvalidOwners();
-        if (_threshold == 0 || _threshold > _owners.length) {
-            revert MinimalAccountMultiSig__InvalidThreshold();
-        }
+    constructor(address entryPoint, string memory providerName) Ownable(msg.sender) {
         I_ENTRY_POINT = IEntryPoint(entryPoint);
-        THRESHOLD = _threshold;
-        for (uint256 i = 0; i < _owners.length; i++) {
-            address owner = _owners[i];
-            if (owner == address(0) || isOwner[owner]) revert MinimalAccountMultiSig__InvalidOwners();
-            isOwner[owner] = true;
-            owners.push(owner);
-        }
+        sessionProvider = providerName;
     }
 
     receive() external payable {}
@@ -49,23 +39,39 @@ contract MinimalAccountMultiSig is IAccount {
         _;
     }
 
+    modifier requireFromEntryPointOrOwner() {
+        _requireFromEntryPointOrOwner();
+        _;
+    }
+
     /*/////////////////////////////////////////////////////////
                         EXTERNAL FUNCTIONS
     /////////////////////////////////////////////////////////*/
+
+    function setSessionKey(address key, uint48 validUntil) external onlyOwner {
+        if (key == address(0)) revert MinimalAccountSession__InvalidSessionKey();
+        sessionKey = key;
+        sessionValidUntil = validUntil;
+    }
+
+    function clearSessionKey() external onlyOwner {
+        sessionKey = address(0);
+        sessionValidUntil = 0;
+    }
 
     function validateUserOp(PackedUserOperation calldata userOp, bytes32 userOpHash, uint256 missingAccountFunds)
         external
         requireFromEntryPoint
         returns (uint256 validationData)
     {
-        validationData = _validateSignatures(userOp, userOpHash);
+        validationData = _validateSignature(userOp, userOpHash);
         _payPrefund(missingAccountFunds);
     }
 
-    function execute(address dest, uint256 value, bytes calldata functionData) external requireFromEntryPoint {
+    function execute(address dest, uint256 value, bytes calldata functionData) external requireFromEntryPointOrOwner {
         (bool success, bytes memory result) = dest.call{value: value}(functionData);
         if (!success) {
-            revert MinimalAccountMultiSig__CallFailed(result);
+            revert MinimalAccountSession__CallFailed(result);
         }
     }
 
@@ -73,38 +79,19 @@ contract MinimalAccountMultiSig is IAccount {
                         INTERNAL FUNCTIONS
     /////////////////////////////////////////////////////////*/
 
-    function _validateSignatures(PackedUserOperation calldata userOp, bytes32 userOpHash)
+    function _validateSignature(PackedUserOperation calldata userOp, bytes32 userOpHash)
         internal
         view
         returns (uint256 validationData)
     {
         bytes32 ethSignedMessageHash = MessageHashUtils.toEthSignedMessageHash(userOpHash);
-        uint256 sigCount = userOp.signature.length / 65;
-        if (sigCount < THRESHOLD || userOp.signature.length % 65 != 0) {
-            return SIG_VALIDATION_FAILED;
+        address signer = ECDSA.recover(ethSignedMessageHash, userOp.signature);
+        if (signer == owner()) {
+            return SIG_VALIDATION_SUCCESS;
         }
-
-        address lastSigner = address(0);
-        uint256 validSigners = 0;
-
-        for (uint256 i = 0; i < sigCount; i++) {
-            uint256 offset = i * 65;
-            bytes calldata sig = userOp.signature[offset:offset + 65];
-            address signer = ECDSA.recover(ethSignedMessageHash, sig);
-            if (!isOwner[signer]) {
-                return SIG_VALIDATION_FAILED;
-            }
-            // Enforce strictly increasing order to prevent duplicates.
-            if (signer <= lastSigner) {
-                return SIG_VALIDATION_FAILED;
-            }
-            lastSigner = signer;
-            validSigners++;
-            if (validSigners == THRESHOLD) {
-                return SIG_VALIDATION_SUCCESS;
-            }
+        if (signer == sessionKey && sessionKey != address(0)) {
+            return _packValidationData(false, sessionValidUntil, 0);
         }
-
         return SIG_VALIDATION_FAILED;
     }
 
@@ -117,7 +104,13 @@ contract MinimalAccountMultiSig is IAccount {
 
     function _requireFromEntryPoint() internal view {
         if (msg.sender != address(I_ENTRY_POINT)) {
-            revert MinimalAccountMultiSig__NotFromEntryPoint();
+            revert MinimalAccountSession__NotFromEntryPoint();
+        }
+    }
+
+    function _requireFromEntryPointOrOwner() internal view {
+        if (msg.sender != address(I_ENTRY_POINT) && msg.sender != owner()) {
+            revert MinimalAccountSession__NotFromEntryPointOrOwner();
         }
     }
 
@@ -126,9 +119,5 @@ contract MinimalAccountMultiSig is IAccount {
     /////////////////////////////////////////////////////////*/
     function getEntryPoint() external view returns (address) {
         return address(I_ENTRY_POINT);
-    }
-
-    function getOwners() external view returns (address[] memory) {
-        return owners;
     }
 }

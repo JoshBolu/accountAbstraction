@@ -17,7 +17,6 @@ contract MinimalAccountTest is Test {
     HelperConfig helperConfig;
     MinimalAccount minimalAccount;
     ERC20Mock usdc;
-    ERC20Mock usdc2;
     SendPackedUserOp sendPackedUserOp;
 
     uint256 constant AMOUNT = 1e18;
@@ -27,8 +26,6 @@ contract MinimalAccountTest is Test {
     function setUp() public {
         DeployMinimalAccount deployMinimal = new DeployMinimalAccount();
         (helperConfig, minimalAccount) = deployMinimal.deployMinimalAccount();
-        HelperConfig.NetworkConfig memory config = helperConfig.getConfig();
-        usdc2 = ERC20Mock(config.usdc);
         usdc = new ERC20Mock();
         sendPackedUserOp = new SendPackedUserOp();
     }

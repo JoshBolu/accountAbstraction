@@ -2,6 +2,23 @@
 src = "src"
 out = "out"
 libs = ["lib"]
+via-ir = true
+ignored_paths = ["src/ethereum"]
+solc = "0.8.28"
+optimizer = true
+
+remappings = [
+    "@openzeppelin/contracts=lib/openzeppelin-contracts/contracts"
+]
+# --system-mode=true  # Removed unknown config
+# is-system = true
+
+[profile.zksync]
+src = "src/zkSync"
+out = "out/zksync"
+libs = ["lib"]
+skip = ["lib/account-abstraction/**", "src/ethereum/**"]
+via-ir = true
 
 remappings = [
     "@openzeppelin/contracts=lib/openzeppelin-contracts/contracts"

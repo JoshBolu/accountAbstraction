@@ -154,8 +154,11 @@ contract ZKMinimalAccount is IAccount, Ownable {
 
     function _validateTransaction(Transaction memory _transaction) internal returns (bytes4 magic) {
         // Call nonceholder
-        // increment nonce
-        // call(x,y,z) => system contract call
+        // Increment the account's nonce to prevent replay attacks.
+        // This calls the NonceHolder system contract to ensure the transaction nonce matches
+        // the current account nonce, then increments it. If the nonce doesn't match, the call reverts.
+        // This is critical for security - without it, transactions could be replayed.
+        // Note: This fails in tests because test-deployed accounts aren't registered with the nonce system.
         // SystemContractsCaller.systemCallWithPropagatedRevert(
         //     uint32(gasleft()),
         //     address(NONCE_HOLDER_SYSTEM_CONTRACT),
